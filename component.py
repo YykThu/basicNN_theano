@@ -2,12 +2,12 @@ from utils import *
 
 
 class Embed(object):
-    def __init__(self, vocab_size, dim_embed, pre_matrix=None, pre_trained=False, prex='Embed'):
+    def __init__(self, vocab_size, dim_embed, pre_matrix=None, pre_trained=False, prex=''):
         self.vocab_size = vocab_size
         self.dim_embed = dim_embed
         self.pre_matrix = pre_matrix
         self.pre_trained = pre_trained
-        self.prex = prex
+        self.prex = pp(prex, 'Embed')
         self._init_params()
 
     def _init_params(self):
@@ -27,11 +27,11 @@ class Embed(object):
 
 
 class FC(object):
-    def __init__(self, dim_in, dim_out, linear=False, prex='FC'):
+    def __init__(self, dim_in, dim_out, linear=False, prex=''):
         self.dim_in = dim_in
         self.dim_out = dim_out
         self.linear = linear
-        self.prex = prex
+        self.prex = pp(prex, 'FC')
         self._init_params()
 
     def _init_params(self):
@@ -53,10 +53,10 @@ class FC(object):
 
 
 class Softmax(object):
-    def __init__(self, dim_in, n_class, prex='Softmax'):
+    def __init__(self, dim_in, n_class, prex=''):
         self.dim_in = dim_in
         self.n_class = n_class
-        self.prex = prex
+        self.prex = pp(prex, 'Softmax')
         self._init_params()
 
     def _init_params(self):
@@ -75,10 +75,10 @@ class Softmax(object):
 
 
 class LSTM(object):
-    def __init__(self, dim_in, dim_hid, embed=None, prex='LSTM'):
+    def __init__(self, dim_in, dim_hid, embed=None, prex=''):
         self.dim_in = dim_in
         self.dim_hid = dim_hid
-        self.prex = prex
+        self.prex = pp(prex, 'LSTM')
         self.embed = embed
         self._init_params()
 
@@ -122,14 +122,56 @@ class LSTM(object):
         return T.cast(h, 'float32'), T.cast(c, 'float32')
 
 
+class BiLSTM(object):
+    def __init__(self, embed, dim_hf_encode, prex=''):
+        self.embed = embed
+        self.dim_embed = self.embed.dim_embed
+        self.dim_hf_encode = dim_hf_encode
+        self.prex = pp(prex, 'bi-LSTM')
+        self._init_params()
+
+    def _init_params(self):
+        self.l_lstm = LSTM(dim_in=self.dim_embed,
+                           dim_hid=self.dim_hf_encode,
+                           embed=self.embed,
+                           prex=self.prex)
+
+        self.r_lstm = LSTM(dim_in=self.dim_embed,
+                           dim_hid=self.dim_hf_encode,
+                           embed=self.embed,
+                           prex=self.prex)
+
+        self.params = self.embed.params + self.l_lstm.params + self.r_lstm.params
+
+    def step_forward(self, id_sequence, mask_sequence):
+        n_steps = id_sequence.shape[0]
+        batch_size = id_sequence.shape[1]
+        r_id_sequence = mask_sequence[::-1]
+        r_mask_sequence = mask_sequence[::-1]
+        init_out = [T.alloc(np.float32(0.), batch_size, self.dim_hf_encode),
+                    T.alloc(np.float32(0.), batch_size, self.dim_hf_encode)]
+
+        [l_h, _], _ = theano.scan(fn=self.l_lstm.step_forward_emb,
+                                  sequences=[id_sequence, mask_sequence],
+                                  outputs_info=init_out,
+                                  n_steps=n_steps)
+
+        [r_h, _], _ = theano.scan(fn=self.r_lstm.step_forward_emb,
+                                  sequences=[r_id_sequence, r_mask_sequence],
+                                  outputs_info=init_out,
+                                  n_steps=n_steps)
+        section_memory = T.concatenate([l_h, r_h], axis=2)
+        return section_memory
+
+
 class Conv2d(object):
 
-    def __init__(self, fshape, filter_size, pool_size, cf, prex='Conv2D'):
+    def __init__(self, fshape, filter_size, pool_size, cf, prex=''):
         self.fshape = fshape
         self.filter_size = filter_size
         self.pool_size = pool_size
         self.cf = cf
-        self.prex = prex
+        self.prex = pp(prex, 'Convolotion 2D')
         self._init_params()
 
     def _init_params(self):
